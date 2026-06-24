@@ -25,4 +25,4 @@ jobs:
         echo "${{ secrets.KUBECONFIG_DATA }}" \
         | base64 -d > ~/.kube/config
 
-    - run: kubectl apply -f kubernetes/
+    - run: sudo kubectl apply -f kubernetes/

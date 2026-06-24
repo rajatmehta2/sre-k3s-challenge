@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+
+metadata:
+  name: nginx-html
+  namespace: hello-world
+
+data:
+  index.html: |
+    <html>
+      <body>
+        <h1>Hello World</h1>
+      </body>
+    </html>
