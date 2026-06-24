@@ -1,28 +1,19 @@
-name: Deploy To K3s
+- name: Configure kubeconfig
+  run: |
+    mkdir -p ~/.kube
 
-on:
-  push:
-    branches:
-      - main
+    echo "${{ secrets.KUBECONFIG_DATA }}" | base64 -d > ~/.kube/config
 
-jobs:
+    chmod 600 ~/.kube/config
 
-  deploy:
+- name: Verify Cluster
+  run: |
+    kubectl version
+    kubectl cluster-info
+    kubectl get nodes
 
-    runs-on: ubuntu-latest
+- name: Deploy Namespace
+  run: kubectl apply -f kubernetes/namespace.yaml
 
-    steps:
-
-    - uses: actions/checkout@v4
-
-    - uses: azure/setup-kubectl@v4
-
-    - name: Configure kubeconfig
-      run: |
-
-        mkdir -p ~/.kube
-
-        echo "${{ secrets.KUBECONFIG_DATA }}" \
-        | base64 -d > ~/.kube/config
-
-    - run: sudo kubectl apply -f kubernetes/
+- name: Deploy App
+  run: kubectl apply -f kubernetes/
