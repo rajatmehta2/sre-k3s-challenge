@@ -6,23 +6,33 @@ on:
       - main
 
 jobs:
-
   deploy:
-
     runs-on: ubuntu-latest
 
     steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
 
-    - uses: actions/checkout@v4
-
-    - uses: azure/setup-kubectl@v4
+    - name: Install kubectl
+      uses: azure/setup-kubectl@v4
 
     - name: Configure kubeconfig
       run: |
-
         mkdir -p ~/.kube
+        echo "${{ secrets.KUBECONFIG_DATA }}" | base64 -d > ~/.kube/config
+        chmod 600 ~/.kube/config
 
-        echo "${{ secrets.KUBECONFIG_DATA }}" \
-        | base64 -d > ~/.kube/config
+    - name: Verify Cluster
+      run: kubectl get nodes
 
-    - run: kubectl apply -f kubernetes/
+    - name: Deploy Kubernetes Resources
+      run: kubectl apply -f kubernetes/
+
+    - name: Restart Deployment
+      run: kubectl rollout restart deployment/hello-nginx -n hello-world
+
+    - name: Wait For Rollout
+      run: kubectl rollout status deployment/hello-nginx -n hello-world --timeout=120s
+
+    - name: Verify Pods
+      run: kubectl get pods -n hello-world
