@@ -3,10 +3,6 @@
 
 ---
 
-> **Note to Self:** This document is written specifically to explain this project during a technical interview. It covers everything from the very basics to advanced implementation details. Read through each section, understand the "why" behind every decision, and be confident while presenting this to the interviewer.
-
----
-
 ## Table of Contents
 
 1. [What is this Project?](#1-what-is-this-project)
@@ -116,42 +112,14 @@ Terraform is an **Infrastructure as Code (IaC)** tool by HashiCorp. Instead of m
 
 ### File: terraform/provider.tf
 
-```hcl
-terraform {
-  required_version = ">= 1.5"
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 6.0"
-    }
-  }
-}
-
-provider "aws" {
-  region = "ap-south-2"
-}
-```
-
 **What it does:**
 - Declares that we are using **Terraform version 1.5 or higher**
 - Declares the **AWS provider** (the plugin that lets Terraform talk to AWS)
 - Sets the AWS **region to ap-south-2** (Hyderabad, India)
 
-**Interview Tip:** The provider block is like telling Terraform which cloud platform to talk to and where in that cloud to create resources.
-
 ---
 
 ### File: terraform/variables.tf
-
-```hcl
-variable "instance_type" {
-  default = "t3.medium"
-}
-
-variable "key_name" {
-  description = "sre-k3s-challenge-key.pem"
-}
-```
 
 **What it does:**
 - Defines **input variables** so that values can be customized without changing the core code
@@ -164,12 +132,6 @@ variable "key_name" {
 
 This file sets up the complete networking layer on AWS.
 
-```
-VPC (10.0.0.0/16)
-  -- Public Subnet (10.0.1.0/24) in ap-south-2a
-       -- Internet Gateway -> Route Table -> Public Access
-```
-
 **Resources Created:**
 
 | Resource | Purpose |
@@ -180,24 +142,9 @@ VPC (10.0.0.0/16)
 | aws_route_table | Routing rules — sends all traffic (0.0.0.0/0) to the internet gateway |
 | aws_route_table_association | Links the route table to the subnet |
 
-**Interview Tip:** Think of VPC as your private building, Subnet as a floor inside, Internet Gateway as the main entrance, and Route Table as the signboard telling traffic which way to go.
-
 ---
 
 ### File: terraform/security.tf
-
-```hcl
-resource "aws_security_group" "k3s" {
-  name   = "k3s-sg"
-  vpc_id = aws_vpc.main.id
-
-  ingress { from_port = 22,    protocol = "tcp" }  # SSH access
-  ingress { from_port = 6443,  protocol = "tcp" }  # Kubernetes API server
-  ingress { from_port = 30080, protocol = "tcp" }  # App access via NodePort
-  ingress { from_port = 80,    protocol = "tcp" }  # HTTP access
-  egress  { all outbound traffic allowed }
-}
-```
 
 **What it does:**
 - Creates a **Security Group** (AWS firewall) with specific inbound port rules
@@ -209,29 +156,9 @@ resource "aws_security_group" "k3s" {
 | 30080 | NodePort — public access to the running application |
 | 80 | Standard HTTP port |
 
-**Interview Tip:** In a production environment, you would restrict port 22 and 6443 to specific IP ranges. Here, 0.0.0.0/0 (open to all) is used for simplicity in a challenge environment.
-
 ---
 
 ### File: terraform/ec2.tf
-
-```hcl
-data "aws_ami" "ubuntu" {
-  most_recent = true
-  owners      = ["099720109477"]   # Canonical official Ubuntu AMI owner ID
-  filter { name = "ubuntu-noble-24.04-amd64-server-*" }
-}
-
-resource "aws_instance" "k3s" {
-  ami                    = data.aws_ami.ubuntu.id
-  instance_type          = var.instance_type   # t3.medium
-  key_name               = var.key_name
-  subnet_id              = aws_subnet.public.id
-  vpc_security_group_ids = [aws_security_group.k3s.id]
-  user_data              = file("userdata.sh")   # auto-run script on boot
-  tags = { Name = "k3s-server" }
-}
-```
 
 **What it does:**
 - Uses a data source to **dynamically fetch the latest Ubuntu 24.04 AMI** (Amazon Machine Image — the OS template)
@@ -242,15 +169,6 @@ resource "aws_instance" "k3s" {
 
 ### File: terraform/userdata.sh
 
-```bash
-#!/bin/bash
-apt update -y
-apt install -y curl wget git
-curl -sfL https://get.k3s.io | sh -
-systemctl enable k3s
-systemctl start k3s
-```
-
 **What it does — Step by Step:**
 
 1. apt update — refreshes the package list
@@ -259,17 +177,9 @@ systemctl start k3s
 4. systemctl enable k3s — ensures K3s starts automatically on every server reboot
 5. systemctl start k3s — starts K3s immediately
 
-**Interview Tip:** This is called a **bootstrap script** or **userdata script**. It is the magic that makes the server self-configure after creation. Zero manual SSH needed.
-
 ---
 
 ### File: terraform/outputs.tf
-
-```hcl
-output "public_ip" {
-  value = aws_instance.k3s.public_ip
-}
-```
 
 **What it does:**
 - After Terraform finishes creating everything, it prints the **public IP address** of the EC2 instance
@@ -336,39 +246,15 @@ The application is deployed using **4 YAML manifest files**, each representing a
 
 ### File: kubernetes/namespace.yaml
 
-```yaml
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: hello-world
-```
-
 **What it does:**
 - Creates a **Namespace** called hello-world
 - A Namespace is a **logical boundary** inside a Kubernetes cluster
 - All application resources (pods, services, configmaps) live inside this namespace
 - It prevents conflicts with other applications running on the same cluster
 
-**Interview Tip:** Namespaces are like folders in a file system — they keep things organized and isolated. In production, you might have namespaces like dev, staging, production.
-
 ---
 
 ### File: kubernetes/configmap.yaml
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: nginx-html
-  namespace: hello-world
-data:
-  index.html: |
-    <html>
-      <body>
-        <h1>Hello World</h1>
-      </body>
-    </html>
-```
 
 **What it does:**
 - A **ConfigMap** stores non-sensitive configuration data as key-value pairs
@@ -376,47 +262,9 @@ data:
 - This ConfigMap is later **mounted as a file** inside the Nginx container
 - This way, the HTML content is **externalized from the container image** — you can update the page content without rebuilding the Docker image
 
-**Interview Tip:** ConfigMaps separate configuration from code. This follows the 12-factor app principle. For sensitive data (passwords, tokens), always use **Secrets** instead of ConfigMaps.
-
 ---
 
 ### File: kubernetes/deployment.yaml
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: hello-nginx
-  namespace: hello-world
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: hello-nginx
-  template:
-    spec:
-      containers:
-      - name: nginx
-        image: nginx:latest
-        ports:
-        - containerPort: 80
-        readinessProbe:
-          httpGet:
-            path: /
-            port: 80
-        livenessProbe:
-          httpGet:
-            path: /
-            port: 80
-        volumeMounts:
-        - name: html-volume
-          mountPath: /usr/share/nginx/html/index.html
-          subPath: index.html
-      volumes:
-      - name: html-volume
-        configMap:
-          name: nginx-html
-```
 
 **What it does:**
 - A **Deployment** is the core Kubernetes resource that manages running containers (called Pods)
@@ -442,22 +290,6 @@ Both probes send an HTTP GET request to / on port 80. If Nginx responds with 200
 
 ### File: kubernetes/service.yaml
 
-```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: hello-nginx-service
-  namespace: hello-world
-spec:
-  selector:
-    app: hello-nginx
-  type: NodePort
-  ports:
-  - port: 80
-    targetPort: 80
-    nodePort: 30080
-```
-
 **What it does:**
 - A **Service** is a stable networking endpoint that exposes pods to the outside world
 - selector: app: hello-nginx — routes traffic to all pods with this label
@@ -471,8 +303,6 @@ spec:
 | ClusterIP | Internal only | Inter-service communication within cluster |
 | NodePort | Via node IP and port | Development / testing (used in this project) |
 | LoadBalancer | Via cloud load balancer | Production on AWS / GCP / Azure |
-
-**Interview Tip:** NodePort is used here because there is no cloud load balancer. Port 30080 is in the valid NodePort range (30000–32767). For production, a LoadBalancer type or Ingress controller would be more appropriate.
 
 ---
 
@@ -488,47 +318,6 @@ spec:
 ---
 
 ### File: .github/workflows/deploy.yml
-
-```yaml
-name: Deploy To K3s
-
-on:
-  push:
-    branches:
-      - main
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
-
-    - name: Install kubectl
-      uses: azure/setup-kubectl@v4
-
-    - name: Configure kubeconfig
-      run: |
-        mkdir -p ~/.kube
-        echo "${{ secrets.KUBECONFIG_DATA }}" | base64 -d > ~/.kube/config
-        chmod 600 ~/.kube/config
-
-    - name: Verify Cluster
-      run: kubectl get nodes
-
-    - name: Deploy Kubernetes Resources
-      run: kubectl apply -f kubernetes/
-
-    - name: Restart Deployment
-      run: kubectl rollout restart deployment/hello-nginx -n hello-world
-
-    - name: Wait For Rollout
-      run: kubectl rollout status deployment/hello-nginx -n hello-world --timeout=120s
-
-    - name: Verify Pods
-      run: kubectl get pods -n hello-world
-```
 
 **Trigger:** This pipeline runs **automatically** whenever code is pushed to the main branch.
 
@@ -563,8 +352,6 @@ In the pipeline, it is decoded at runtime:
 ```bash
 echo "${{ secrets.KUBECONFIG_DATA }}" | base64 -d > ~/.kube/config
 ```
-
-**Interview Tip:** Never commit credentials to a repository. GitHub Secrets are encrypted at rest and only exposed during authorized workflow runs.
 
 ---
 
@@ -673,73 +460,3 @@ http://<EC2_PUBLIC_IP>:30080
 ```
 
 ---
-
-## 13. Possible Interview Questions and Answers
-
----
-
-### Q1: Why did you choose K3s over full Kubernetes?
-
-**Answer:** K3s is a lightweight, CNCF-certified Kubernetes distribution ideal for single-node deployments and edge environments. Since this challenge required a single server setup, K3s was the most practical choice — it installs with a single curl command, uses far less RAM (around 512 MB vs 2+ GB for full Kubernetes), and is fully compatible with standard Kubernetes YAML manifests. For a production multi-node setup, I would consider EKS on AWS, GKE on Google Cloud, or a full kubeadm cluster.
-
----
-
-### Q2: How does the CI/CD pipeline authenticate with the Kubernetes cluster?
-
-**Answer:** The K3s kubeconfig file located at /etc/rancher/k3s/k3s.yaml on the server is base64-encoded and stored as a GitHub Secret named KUBECONFIG_DATA. In the pipeline, this is decoded at runtime and written to ~/.kube/config, which kubectl reads to authenticate against the K3s API server running on port 6443 of the EC2 instance.
-
----
-
-### Q3: What is the difference between a ConfigMap and a Secret in Kubernetes?
-
-**Answer:** Both store key-value data, but with different intent and encoding:
-- ConfigMap stores non-sensitive configuration data like HTML content or app config files in plain text
-- Secret stores sensitive data like passwords, API tokens, or certificates in base64-encoded form (and can be encrypted at rest using etcd encryption)
-
-In this project, the HTML content is stored in a ConfigMap because it is not sensitive data. If we were storing database credentials, we would use a Kubernetes Secret.
-
----
-
-### Q4: What would happen if you push to a branch other than main?
-
-**Answer:** Nothing would happen. The pipeline is configured to trigger only on pushes to the main branch, as defined in the on: push: branches: [main] section of deploy.yml. Pushes to feature branches or pull requests will not trigger the deployment pipeline.
-
----
-
-### Q5: How does Terraform know what to create versus what already exists?
-
-**Answer:** Terraform maintains a **state file** called terraform.tfstate that tracks all resources it has created. When you run terraform apply again, it compares the desired state defined in your .tf files with the current state recorded in the state file, and only makes changes necessary to bring reality in line with the desired configuration. This is what makes Terraform idempotent.
-
----
-
-### Q6: What is a NodePort and why did you use port 30080?
-
-**Answer:** A NodePort is a Kubernetes Service type that exposes a port on every node of the cluster, allowing external traffic to reach pods. Port 30080 was chosen because Kubernetes NodePorts must be in the range 30000 to 32767. Port 30080 was also explicitly opened in the AWS Security Group to allow external internet access. For production, a LoadBalancer service type backed by an AWS ELB, or an Ingress controller with a proper domain name and TLS, would be the preferred approach.
-
----
-
-### Q7: What is kubectl rollout restart and why is it needed?
-
-**Answer:** kubectl rollout restart deployment/hello-nginx -n hello-world triggers a rolling restart of all pods in the deployment. This is necessary because when a ConfigMap is updated using kubectl apply, Kubernetes does NOT automatically restart the pods that are using it — they continue running with the old mounted data. The rollout restart forces pods to be recreated, which causes them to mount and read the latest version of the ConfigMap. The pipeline then uses kubectl rollout status to wait and confirm the restart completes successfully before finishing.
-
----
-
-### Q8: How would you make this production-ready?
-
-**Answer:** Several improvements would be needed for production:
-
-1. High Availability — Multiple pod replicas and a multi-node K3s cluster
-2. HTTPS — Cert-manager with Let's Encrypt plus an Ingress controller for TLS termination
-3. Proper secret management — HashiCorp Vault or AWS Secrets Manager instead of GitHub Secrets
-4. Restricted network access — Lock down SSH (port 22) and Kubernetes API (port 6443) to specific IP addresses
-5. Monitoring — Prometheus and Grafana for metrics collection and dashboards
-6. Logging — EFK stack (Elasticsearch, Fluentd, Kibana) for centralized log management
-7. Image pinning — Use specific image versions like nginx:1.27 instead of nginx:latest
-8. Resource limits — Add CPU and memory requests and limits to container specs
-9. RBAC — Create a least-privilege service account for the CI/CD pipeline
-10. Remote Terraform state — Store terraform.tfstate in an S3 bucket with DynamoDB locking for team use
-
----
-
-*This document was prepared as a comprehensive interview guide for the SRE K3s Challenge project.*
-*Author: Rajat Mehta | Prepared: June 2026*
